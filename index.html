@@ -240,10 +240,11 @@ const CH =  862;
 //   phải (PR) > trái  (PL) : bù crop phía phải
 // Sau khi xoay 90°CW: trên→phải, phải→dưới, dưới→trái, trái→trên
 // Điều chỉnh các giá trị này nếu vẫn bị lệch (mỗi đơn vị ≈ 0.085mm)
-const PT = 55;   // padding trên  — đã chuẩn, không chỉnh
-const PB = 0;    // padding dưới  — hoàn hảo
-const PL = 0;    // padding trái  — hoàn hảo
-const PR = 55;   // padding phải  — đã chuẩn, không chỉnh
+const PT = 55;   // padding trên  (hardware offset máy in — không đổi)
+const PB = 0;    // padding dưới  (hardware offset máy in — không đổi)
+const PL = 0;    // padding trái  (hardware offset máy in — không đổi)
+const PR = 55;   // padding phải  (hardware offset máy in — không đổi)
+const PAD = 30;  // padding nội dung bên trong viền: 2.5mm @ 300dpi ≈ 30px
 
 const DIV_X = Math.round(CW * 0.70);   // 70% trái / 30% phải
 
@@ -380,8 +381,8 @@ function draw(canvas, d, logo){
   // ══════════════════════════════════════════
   //  CỘT TRÁI
   // ══════════════════════════════════════════
-  const lx  = L + 16;
-  const lw  = DX - L - 16 - 12;
+  const lx  = L + PAD;
+  const lw  = DX - L - PAD - PAD;   // nội dung trái: từ lx đến DX-PAD
   const lcx = L + (DX - L)/2;
   ctx.textBaseline='top'; ctx.fillStyle='#000';
 
@@ -429,31 +430,58 @@ function draw(canvas, d, logo){
   const contentAreaB = B - shipAreaH - 2; // đáy vùng thông tin
   const contentAreaH = contentAreaB - (T+HDR_H) - 14;
 
-  let ly = logo ? T + HDR_H + 20 : T + 16;
+  // Vùng khả dụng cho thông tin khách (trừ header và ship area)
+  // phone ~60px, addr ~50px, gaps ~30px → reserve ~140px phía dưới
+  const infoReserve = (phone?65:0) + (addr?55:0) + (phone||addr?30:0);
+  const nameMaxB   = contentAreaB - infoReserve; // đáy tối đa cho tên
 
-  // Tên khách — fill tối đa 3 dòng, size lớn nhất có thể
+  let ly = logo ? T + HDR_H + PAD : T + PAD;
+
+  // Tên khách — to nhất có thể, tối đa 3 dòng, không vượt nameMaxB
   if(name){
-    const nameUp = name.toUpperCase();
-    // Tìm size lớn nhất vừa đủ 3 dòng
-    const nameSz = fitSzLines(ctx, nameUp, lw, 3, 130, 32, '800');
+    const nameUp  = name.toUpperCase();
+    const nameAvH = nameMaxB - ly;               // chiều cao khả dụng cho tên
+    // Tìm size lớn nhất vừa 3 dòng VÀ vừa chiều cao khả dụng
+    let nameSz = fitSzLines(ctx, nameUp, lw, 3, 130, 28, '800');
+    // Kiểm tra chiều cao thực: đếm số dòng × lineHeight
+    ctx.font = '800 '+nameSz+'px '+FONT;
+    const words = nameUp.split(' ');
+    let lines=1, line='';
+    for(const w of words){
+      const t=line?line+' '+w:w;
+      if(ctx.measureText(t).width>lw && line){lines++;line=w;}
+      else line=t;
+    }
+    const lh = Math.round(nameSz*1.1);
+    // Co size nếu chiều cao tổng vượt vùng khả dụng
+    while(nameSz > 28 && lines*lh > nameAvH){
+      nameSz -= 2;
+      ctx.font = '800 '+nameSz+'px '+FONT;
+      lines=1; line='';
+      for(const w of words){
+        const t=line?line+' '+w:w;
+        if(ctx.measureText(t).width>lw && line){lines++;line=w;}
+        else line=t;
+      }
+    }
     ctx.font = '800 '+nameSz+'px '+FONT;
     ctx.textAlign='center';
     ly = wrapCenter(ctx, nameUp, lcx, ly, lw, Math.round(nameSz*1.1));
     ly += 14;
   }
 
-  // SĐT — bold, to thứ 2
+  // SĐT
   if(phone){
-    const sz = fitSz(ctx, phone, lw, 50, 28, 'bold');
+    const sz = fitSz(ctx, phone, lw, 50, 26, 'bold');
     ctx.font = '700 '+sz+'px '+FONT;
     ctx.textAlign='center';
     ctx.fillText(phone, lcx, ly);
-    ly += Math.round(sz*1.25)+12;
+    ly += Math.round(sz*1.25)+10;
   }
 
-  // Địa chỉ — normal, vừa
+  // Địa chỉ
   if(addr){
-    const sz = fitSz(ctx, addr, lw, 36, 22, 'normal');
+    const sz = fitSz(ctx, addr, lw, 34, 20, 'normal');
     ctx.font = 'normal '+sz+'px '+FONT;
     ctx.textAlign='center';
     ly = wrapCenter(ctx, addr, lcx, ly, lw, Math.round(sz*1.3));
@@ -479,8 +507,8 @@ function draw(canvas, d, logo){
   // ══════════════════════════════════════════
   //  CỘT PHẢI
   // ══════════════════════════════════════════
-  const rx  = DX + LW + 12;
-  const rw  = R - rx - 8;
+  const rx  = DX + LW + PAD;
+  const rw  = R - rx - PAD;
   const rcx = rx + rw/2;
   ctx.textAlign='center'; ctx.textBaseline='top';
 
