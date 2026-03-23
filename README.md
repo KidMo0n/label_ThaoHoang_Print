@@ -1,8 +1,8 @@
 # 🌸 Thảo Hoàng Orchid — Hệ thống In Tem Dán Thùng
 
-Hệ thống in tem tự động cho **Thảo Hoàng Orchid**, gồm 2 phần:
+Hệ thống in tem tự động gồm 2 phần:
 
-- **`index.html`** — web tĩnh trên GitHub Pages, nhận đơn hàng từ AppSheet, vẽ tem bằng Canvas API, gửi đến máy in
+- **`index.html`** — web tĩnh trên Cloudflare Pages, nhận đơn từ AppSheet, vẽ tem bằng Canvas, gửi đến máy in
 - **`server.js`** — Node.js server chạy local tại mỗi khu, nhận PNG, in qua CUPS
 
 ---
@@ -13,30 +13,32 @@ Hệ thống in tem tự động cho **Thảo Hoàng Orchid**, gồm 2 phần:
 AppSheet
    │  mở URL kèm params
    ▼
-GitHub Pages (index.html)
-   │  POST /in_label/print  { imageBase64, numCopies }
+thaohoang-label.thangmotsach.com  (Cloudflare Pages)
+   │  POST /in_label/print
    │
-   ├──▶  aserver.thangmotsach.com/in_label  (Cloudflare Tunnel → 192.168.0.6:4001)  →  XPrinter XP-365B
-   └──▶  bserver.thangmotsach.com/in_label  (Cloudflare Tunnel → 192.168.2.14:4001) →  XPrinter XP-470B
+   ├──▶  aserver.thangmotsach.com/in_label  →  Khu A (192.168.0.6:4001)   →  XP-365B
+   └──▶  bserver.thangmotsach.com/in_label  →  Khu B (192.168.2.14:4001)  →  XP-470B
 ```
 
 **Luồng xử lý:**
-1. AppSheet mở URL GitHub Pages kèm thông tin đơn (URL-encoded)
-2. `index.html` parse → vẽ tem trên Canvas (1146×862px landscape, 97×73mm @300dpi)
-3. Canvas xoay 90°CW ngay trên trình duyệt → PNG portrait 862×1146px
-4. POST PNG đến server khu tương ứng
-5. Server ghi file tạm → `lp` in qua CUPS → xóa file
+1. AppSheet mở URL Cloudflare Pages kèm thông tin đơn (URL-encoded)
+2. `index.html` vẽ tem trên Canvas (1146×862px landscape, 97×73mm @300dpi)
+3. Canvas **xoay 90°CW ngay trên trình duyệt** → PNG portrait
+4. POST PNG đến print server khu tương ứng
+5. Server nhận → `lp` in qua CUPS → xóa file tạm
 
 ---
 
-## 🗂️ Cấu trúc repo
+## 🗂️ Cấu trúc thư mục
 
 ```
 in_label/
-├── index.html           # Frontend — GitHub Pages
-├── server.js            # Print server — chạy local mỗi khu
-├── package.json         # npm dependencies (chỉ express)
-├── install-service.sh   # Cài systemd service
+├── index.html                          # Frontend
+├── server.js                           # Print server
+├── package.json                        # npm (chỉ express)
+├── setup.sh                            # ← Cài đặt máy mới từ đầu
+├── install-service.sh                  # Đăng ký/cập nhật systemd service
+├── printer-driver-xprinter_3_13_3_all.deb
 └── README.md
 ```
 
@@ -49,83 +51,98 @@ in_label/
 | A | aserver.thangmotsach.com/in_label | 192.168.0.6 | 4001 | XPrinter XP-365B |
 | B | bserver.thangmotsach.com/in_label | 192.168.2.14 | 4001 | XPrinter XP-470B |
 
-Khổ giấy: `Custom.73x97mm` (73×97mm, portrait)
+- Khổ giấy: `Custom.73x97mm` (73×97mm, portrait)
+- Driver: XP-470B (grayscale) / XP-365B (grayscale)
+- Kết nối: USB → `usb://Xprinter/XP-470B?serial=...`
 
 ---
 
-## 🚀 Cài đặt Print Server
-
-Làm trên **từng máy** (Khu A và Khu B).
-
-### Yêu cầu
-
-- Ubuntu / Debian Linux
-- Node.js 20+
-- CUPS đã cài, máy in đã thêm vào hệ thống
-
-### Bước 1 — Cài Node.js (nếu chưa có)
+## 🚀 Cài đặt máy mới (chạy 1 lần)
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-node --version   # cần >= 20
-```
-
-### Bước 2 — Lấy code
-
-```bash
-git clone https://github.com/YOUR_USERNAME/in_label.git
+unzip thaohoang-label-server.zip -d in_label
 cd in_label
+chmod +x setup.sh
+sudo ./setup.sh
 ```
 
-### Bước 3 — Chạy script cài đặt
+`setup.sh` tự động làm **6 bước**, mỗi bước kiểm tra trước — chạy lại an toàn:
 
-```bash
-chmod +x install-service.sh
-sudo ./install-service.sh
+| Bước | Nội dung | Kiểm tra bỏ qua nếu |
+|------|----------|---------------------|
+| 1 | Node.js 20 | `node --version` ≥ 18 |
+| 2 | CUPS + mở cổng 631 cho LAN | `dpkg -l cups` đã cài |
+| 3 | Driver XPrinter `.deb` | `dpkg -l printer-driver-xprinter` đã cài |
+| 4 | Thêm máy in vào CUPS | `lpstat -a` đã có tên máy |
+| 5 | `npm install` (express) | `node_modules/express` đã có |
+| 6 | systemd service | Ghi đè — luôn cập nhật |
+
+### Bước 4 — Thêm máy in chi tiết
+
+Script **tự dò URI USB** (`lpinfo -v`) thay vì nhập tay:
+
+```
+Đang dò cổng USB cho XP-470B...
+✅  Tìm thấy URI: usb://Xprinter/XP-470B?serial=470BWH243290034
+✅  Đã thêm XP-470B | driver: xprinter/XP-470B.ppd
 ```
 
-Script tự động làm:
-- Tìm Node.js (hỗ trợ cả nvm)
-- `npm install --omit=dev` (chỉ cài `express`)
-- Tạo `/etc/systemd/system/thaohoang-print-label.service`
-- `systemctl enable` + `systemctl start`
-
-### Bước 4 — Kiểm tra
-
-```bash
-# Local
-curl http://localhost:4001/in_label/health
-
-# Qua Cloudflare tunnel (từ bất kỳ đâu)
-curl https://aserver.thangmotsach.com/in_label/health   # Khu A
-curl https://bserver.thangmotsach.com/in_label/health   # Khu B
-```
-
-Kết quả mong đợi:
-```json
-{
-  "status": "ok",
-  "khu": "A",
-  "printer": "XP-365B",
-  "available": true,
-  "media": "Custom.73x97mm",
-  "timestamp": "2026-03-19T10:00:00.000Z"
-}
-```
+Nếu không tự tìm được (máy chưa cắm USB), script hiển thị danh sách USB đang thấy và cho nhập thủ công.
 
 ---
 
 ## ☁️ Cloudflare Tunnel
 
-Mỗi khu cần 1 tunnel trỏ đến IP tĩnh của máy đó (**không dùng `localhost`** vì cloudflared chạy trong Docker).
+Mỗi khu cần 1 tunnel — **dùng IP tĩnh, không dùng `localhost`** (vì cloudflared chạy trong Docker):
 
-| Khu | Public hostname | Service |
-|-----|----------------|---------|
+| Khu | Hostname | Service |
+|-----|----------|---------|
 | A | aserver.thangmotsach.com | http://192.168.0.6:4001 |
 | B | bserver.thangmotsach.com | http://192.168.2.14:4001 |
 
-Path prefix: `in_label` → server nhận request tại `/in_label/health` và `/in_label/print`.
+Path prefix `in_label` → routes: `/in_label/health` và `/in_label/print`
+
+---
+
+## 🌐 CUPS Web UI
+
+Truy cập từ bất kỳ máy trong LAN:
+
+```
+http://<IP-máy-in>:631
+```
+
+Ví dụ: `http://192.168.2.14:631`
+
+Đăng nhập bằng **tài khoản Linux** của máy đó (user trong nhóm `lpadmin`).
+
+### Xem URI máy in đang dùng
+
+```bash
+lpstat -v
+# XP-470B usb://Xprinter/XP-470B?serial=470BWH243290034
+```
+
+### Thêm/sửa máy in thủ công
+
+```bash
+# Xem tất cả thiết bị USB CUPS nhận ra
+sudo lpinfo -v | grep usb
+
+# Xem tất cả driver có sẵn
+sudo lpinfo -m | grep -i xprinter
+
+# Thêm máy in
+sudo lpadmin -p XP-470B -E \
+  -v "usb://Xprinter/XP-470B?serial=470BWH243290034" \
+  -m "xprinter/XP-470B.ppd" \
+  -o PageSize=Custom.73x97mm \
+  -o media=Custom.73x97mm \
+  -o sides=one-sided
+
+# Xóa và thêm lại
+sudo lpadmin -x XP-470B
+```
 
 ---
 
@@ -138,39 +155,12 @@ sudo systemctl status thaohoang-print-label
 # Log realtime
 journalctl -u thaohoang-print-label -f
 
-# Log 50 dòng gần nhất
-journalctl -u thaohoang-print-label -n 50 --no-pager
-
-# Khởi động lại (sau khi cập nhật server.js)
+# Khởi động lại (sau khi sửa server.js / chuyển thư mục)
 sudo systemctl restart thaohoang-print-label
 
-# Dừng / Bật
-sudo systemctl stop thaohoang-print-label
-sudo systemctl start thaohoang-print-label
-
-# Gỡ cài hoàn toàn
-sudo systemctl disable thaohoang-print-label
-sudo rm /etc/systemd/system/thaohoang-print-label.service
-sudo systemctl daemon-reload
-```
-
----
-
-## 🌐 GitHub Pages
-
-### Bật GitHub Pages
-
-1. Repo → **Settings** → **Pages**
-2. Source: **Deploy from a branch** → branch `main`, folder `/ (root)`
-3. URL: `https://YOUR_USERNAME.github.io/in_label/`
-
-### Deploy
-
-```bash
-git add .
-git commit -m "mô tả thay đổi"
-git push
-# GitHub Pages tự build sau ~1 phút
+# Chuyển thư mục → chạy lại setup.sh từ vị trí mới
+cd /đường/dẫn/mới/in_label
+sudo ./setup.sh
 ```
 
 ---
@@ -180,64 +170,36 @@ git push
 ```
 HYPERLINK(
   CONCATENATE(
-    "https://YOUR_USERNAME.github.io/in_label/index.html?",
+    "https://thaohoang-label.thangmotsach.com/in_label?",
     ENCODEURL(CONCATENATE(
       TEXT([THỜI GIAN LÊN ĐƠN], "DD/MM/YYYY"), "
 - ", [THÔNG TIN DÁN THÙNG], "
 - MÃ CÂY: ",
-      IF(CONTAINS([MÃ CÂY], "-"),
-        LEFT([MÃ CÂY], FIND("-", [MÃ CÂY]) - 1),
-        [MÃ CÂY]
-      ), " - ",
-      IF(LEN([LOẠI CÂY]) > 5,
-        LEFT(RIGHT([LOẠI CÂY], 5), 1) & "V",
-        [LOẠI CÂY]
-      ), "
+      IF(CONTAINS([MÃ CÂY],"-"), LEFT([MÃ CÂY],FIND("-",[MÃ CÂY])-1), [MÃ CÂY]),
+      " - ",
+      IF(LEN([LOẠI CÂY])>5, LEFT(RIGHT([LOẠI CÂY],5),1)&"V", [LOẠI CÂY]), "
 - GHI CHÚ: ", [GHI CHÚ], "
-- TỔNG: ", [SỐ THÙNG], " THÙNG"
+- TỔNG: ", [SỐ THÙNG], " THÙNG",
+      IF([ĐỘI PHỤ TRÁCH]="Khu B", "\nkhuB", "\nkhuA"),
+      IF(OR(
+        [KHÁCH HÀNG ĐẠI LÝ]="CÔ ĐỨC",
+        [KHÁCH HÀNG ĐẠI LÝ]="CÔ KIM NGÂN",
+        CONTAINS([MÃ CÂY],"KSC")
+      ), "\nnoLogo", "")
     ))
   ),
   "IN TEM DÁN THÙNG"
 )
 ```
 
-Thêm `noLogo` cuối URL để ẩn toàn bộ thông tin công ty (logo, tên, website):
-```
-... TỔNG: 2 THÙNG
-noLogo
-```
-
----
-
-## 🎨 Layout Tem
-
-```
-┌──────────────────────────────────┬───────────────┐
-│  [LOGO]  Thảo Hoàng Orchid       │  12/03/2026   │  ← header (nền đen, chữ trắng)
-├──────────────────────────────────┤               │
-│                                  │     A33       │  ← mã cây (to)
-│   TÊN KHÁCH HÀNG                │      1V       │  ← loại cây
-│   (tối đa 3 dòng, chữ to nhất)  │               │
-│                                  │  Ghi chú: .. │
-│   SĐT                           │               │
-│   Địa chỉ                       │  ──────────── │
-│                                  │  TỔNG: 2     │
-│                                  │  THÙNG       │
-├──────────────────────────────────┤  ──────────── │
-│        SÂN BAY TẮM NHẬN        │ -Thảo Hoàng- │
-└──────────────────────────────────┴───────────────┘
-
-noLogo: bỏ header, bỏ footer "-Thảo Hoàng Orchid-" và website
-Canvas: 1146×862px landscape → xoay 90°CW trên trình duyệt → portrait → in
-Font: Barlow Condensed (Google Fonts) — hỗ trợ đầy đủ tiếng Việt
-```
+**`noLogo`** — ẩn toàn bộ thông tin công ty (logo, tên, website, footer)
 
 ---
 
 ## 📊 Số tem tự động
 
-| Số thùng nhập | Số tem in |
-|--------------|-----------|
+| Số thùng | Số tem in |
+|----------|-----------|
 | ≤ 1 | 2 |
 | 2 | 4 |
 | 2.3 | 4 (floor × 2) |
@@ -252,66 +214,58 @@ Font: Barlow Condensed (Google Fonts) — hỗ trợ đầy đủ tiếng Việt
 
 ```bash
 journalctl -u thaohoang-print-label -n 50 --no-pager
-
-# Thử chạy tay để xem lỗi trực tiếp
-node server.js
+node server.js   # chạy tay để xem lỗi trực tiếp
 ```
 
-### Tunnel trả về 502
+### Tunnel 502
 
-Cloudflare không kết nối được đến server. Kiểm tra:
 ```bash
-# 1. Server có đang chạy không?
+# Kiểm tra service đang chạy
 sudo systemctl status thaohoang-print-label
-
-# 2. Tunnel config có dùng IP tĩnh không? (không dùng localhost)
-#    Đúng:  http://192.168.0.6:4001
-#    Sai:   http://localhost:4001  ← lỗi khi cloudflared chạy trong Docker
-
-# 3. Port có đang lắng nghe không?
+# Kiểm tra port đang nghe
 ss -tlnp | grep 4001
-
-# 4. Firewall
-sudo ufw allow 4001
+# Tunnel phải dùng IP tĩnh — không dùng localhost
+# Đúng:  http://192.168.2.14:4001
+# Sai:   http://localhost:4001
 ```
 
 ### Máy in không in
 
 ```bash
-# Kiểm tra tên máy in (phải khớp với PRINTER trong server.js)
-lpstat -a
-
-# Test in thủ công
-lp -d XP-365B -o media=Custom.73x97mm /path/to/test.png
+lpstat -a                    # xem trạng thái queue
+lpstat -v                    # xem URI đang dùng
+sudo lpinfo -v | grep usb    # máy in có được nhận ra không
+cancel -a XP-470B            # xóa hết job đang kẹt
 ```
 
-### Chữ tiếng Việt bị lỗi
-
-Cần kết nối internet để load **Barlow Condensed** từ Google Fonts. Nếu máy không có net, cần embed font vào HTML.
-
----
-
-## 🔄 Cập nhật code trên server
+### CUPS không truy cập được từ LAN
 
 ```bash
-cd /path/to/in_label
-git pull
-sudo systemctl restart thaohoang-print-label
+# Kiểm tra config
+grep -E "^Port|^Listen|Allow" /etc/cups/cupsd.conf
+# Phải có "Port 631" (không phải "Listen localhost:631")
+# Và "Allow 192.168.0.0/16" trong các block <Location>
+
+# Khởi động lại
+sudo systemctl restart cups
+
+# Mở firewall
+sudo ufw allow 631/tcp
 ```
 
 ---
 
 ## 🖼️ Thay logo
 
-Logo được nhúng base64 trực tiếp trong `index.html` (biến `LOGO_B64`). Để thay:
+Logo embed thẳng dưới dạng base64 trong `index.html` (biến `LOGO_B64`):
 
 ```bash
 python3 -c "
 import base64
-with open('logo.jpg', 'rb') as f:
+with open('logo.jpg','rb') as f:
     print('data:image/jpeg;base64,' + base64.b64encode(f.read()).decode())
-" > logo_b64.txt
-# Sau đó thay giá trị LOGO_B64 trong index.html
+"
+# Copy kết quả → thay giá trị LOGO_B64 trong index.html → git push
 ```
 
 ---

@@ -255,7 +255,7 @@ const PT = 55;   // padding trên  (hardware offset máy in — không đổi)
 const PB = 0;    // padding dưới  (hardware offset máy in — không đổi)
 const PL = 0;    // padding trái  (hardware offset máy in — không đổi)
 const PR = 55;   // padding phải  (hardware offset máy in — không đổi)
-const PAD = 30;  // padding nội dung bên trong viền: 2.5mm @ 300dpi ≈ 30px
+const PAD = 24;  // padding nội dung bên trong viền: 2mm @ 300dpi ≈ 24px
 
 const DIV_X = Math.round(CW * 0.70);   // 70% trái / 30% phải
 
@@ -523,19 +523,41 @@ function draw(canvas, d, logo){
   const rcx = rx + rw/2;
   ctx.textAlign='center'; ctx.textBaseline='top';
 
-  // ── NGÀY — header phải, nền đen chữ trắng để nổi ──
+  // ── NGÀY — header phải, nền đen chữ trắng ──
   if(d.date){
-    // Nền tối cho ô ngày
+    // Nền đen toàn bộ header phải
     ctx.fillStyle='#000';
     ctx.fillRect(DX+LW, T, CW-DX-LW-PR-LW/2, HDR_H);
     ctx.fillStyle='#fff';
-    ctx.font = '700 28px '+FONT;
-    // Căn giữa dọc trong header
-    const dateY = T + (HDR_H - 28)/2;
-    ctx.fillText(d.date, rcx, dateY);
+    ctx.textBaseline='middle';
+
+    // Tách ngày: DD/MM | YYYY → 2 dòng to rõ
+    const dParts = d.date.split('/');  // ['DD','MM','YYYY']
+    if(dParts.length === 3){
+      const line1 = dParts[0]+'/'+dParts[1];   // DD/MM
+      const line2 = dParts[2];                  // YYYY
+      const sz1   = fitSz(ctx, line1, rw-8, 38, 22, '800');
+      const sz2   = fitSz(ctx, line2, rw-8, 28, 18, '600');
+      const gap   = 4;
+      const totalH= sz1 + gap + sz2;
+      const startY= T + (HDR_H - totalH)/2;
+      // Dòng 1: DD/MM
+      ctx.font = '800 '+sz1+'px '+FONT;
+      ctx.fillText(line1, rcx, startY + sz1/2);
+      // Dòng 2: YYYY — nhỏ hơn, nhạt hơn
+      ctx.fillStyle='rgba(255,255,255,0.75)';
+      ctx.font = '600 '+sz2+'px '+FONT;
+      ctx.fillText(line2, rcx, startY + sz1 + gap + sz2/2);
+      ctx.fillStyle='#fff';
+    } else {
+      // Fallback: in nguyên 1 dòng
+      const szD = fitSz(ctx, d.date, rw-8, 34, 20, '700');
+      ctx.font = '700 '+szD+'px '+FONT;
+      ctx.fillText(d.date, rcx, T + HDR_H/2);
+    }
+    ctx.textBaseline='top';
     ctx.fillStyle='#000';
   } else {
-    // Đường kẻ dưới header phải cho đồng bộ
     ctx.beginPath(); ctx.moveTo(rx, T+HDR_H); ctx.lineTo(R-6, T+HDR_H);
     ctx.lineWidth=2.5; ctx.stroke();
   }
