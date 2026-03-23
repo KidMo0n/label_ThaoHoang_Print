@@ -424,7 +424,7 @@ function draw(canvas, d, logo){
     ctx.textBaseline = 'top';
 
     // Đường kẻ dưới header (chỉ khi có logo)
-    ctx.beginPath(); ctx.moveTo(lx, T+HDR_H); ctx.lineTo(DX-12, T+HDR_H);
+    ctx.beginPath(); ctx.moveTo(lx, T+HDR_H); ctx.lineTo(DX - PAD, T+HDR_H);
     ctx.lineWidth=2.5; ctx.stroke();
   }
   // noLogo: HDR_H vẫn khai báo nhưng không vẽ gì — nội dung bắt đầu từ T
@@ -501,13 +501,13 @@ function draw(canvas, d, logo){
   // ── ĐƯỜNG KẺ + VẬN CHUYỂN neo đáy trái ──
   if(d.ship){
     const shipUp = d.ship.toUpperCase();
-    const sz  = fitSz(ctx, shipUp, lw-8, 46, 24, 'bold');
+    const sz  = fitSz(ctx, shipUp, lw, 46, 24, 'bold');
     ctx.font  = '700 '+sz+'px '+FONT;
-    const nL  = Math.ceil(ctx.measureText(shipUp).width/(lw-8));
+    const nL  = Math.ceil(ctx.measureText(shipUp).width/lw);
     const sH  = nL * Math.round(sz*1.15);
     const sepY = B - shipAreaH;
     // Đường kẻ phân cách
-    ctx.beginPath(); ctx.moveTo(lx, sepY); ctx.lineTo(DX-12, sepY);
+    ctx.beginPath(); ctx.moveTo(lx, sepY); ctx.lineTo(DX - PAD, sepY);
     ctx.lineWidth=2; ctx.stroke();
     // Căn giữa dọc trong ship area
     const sY = sepY + (shipAreaH - sH)/2;
@@ -566,7 +566,7 @@ function draw(canvas, d, logo){
     // Tính vùng khả dụng cho mã cây (giữa header và TỔNG/footer)
     const treeAreaT = dateBottomY + 8;  // bắt đầu ngay dưới phần ngày
     const treeAreaB = d.total
-      ? (()=>{ const sz=fitSz(ctx,('TỔNG: '+d.total),rw,50,26,'bold'); return B-50-Math.round(sz*1.5)-20; })()
+      ? (()=>{ const sz=fitSz(ctx,('TỔNG: '+d.total),rw,50,26,'bold'); return B - PAD*2 - Math.round(sz*1.5) - fH; })()
       : B - 50 - 10;
 
     const sz1 = fitSz(ctx, part1, rw, 130, 40, '900');
@@ -592,7 +592,7 @@ function draw(canvas, d, logo){
 
   // ── GHI CHÚ ──
   if(d.note && d.note!=='-'){
-    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(R-6, ry);
+    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(R - PAD, ry);
     ctx.lineWidth=1.5; ctx.stroke(); ry += 12;
     ctx.font = '600 22px '+FONT; ctx.textAlign='left'; ctx.fillStyle='#000';
     ctx.fillText('Ghi chú:', rx, ry); ry += 30;
@@ -605,21 +605,21 @@ function draw(canvas, d, logo){
   const fH = logo ? 50 : 0;
   const fY = B - fH;
   if(logo){
-    ctx.beginPath(); ctx.moveTo(rx, fY); ctx.lineTo(R-6, fY);
+    ctx.beginPath(); ctx.moveTo(rx, fY); ctx.lineTo(R - PAD, fY);
     ctx.lineWidth=1.5; ctx.stroke();
     ctx.fillStyle='#000';
     ctx.font = '700 19px '+FONT; ctx.textAlign='center';
-    ctx.fillText('-Thảo Hoàng Orchid-', rcx, fY+6);
+    ctx.fillText('-Thảo Hoàng Orchid-', rcx, fY + 16);
     ctx.font = 'normal 17px '+FONT;
-    ctx.fillText('www.thaohoangorchid.com', rcx, fY+28);
+    ctx.fillText('www.thaohoangorchid.com', rcx, fY + 36);
   }
 
   // ── TỔNG: neo trên footer ──
   if(d.total){
     const txt = 'TỔNG: '+d.total;
     const sz  = fitSz(ctx, txt, rw, 50, 26, 'bold');
-    const tY  = fY - Math.round(sz*1.5) - 14;
-    ctx.beginPath(); ctx.moveTo(rx, tY); ctx.lineTo(R-6, tY);
+    const tY  = fY - Math.round(sz*1.5) - PAD/2;
+    ctx.beginPath(); ctx.moveTo(rx, tY); ctx.lineTo(R - PAD, tY);
     ctx.lineWidth=4; ctx.stroke();
     ctx.font = '700 '+sz+'px '+FONT; ctx.textAlign='center';
     ctx.fillText(txt, rcx, tY+10);
