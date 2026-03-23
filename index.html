@@ -523,38 +523,39 @@ function draw(canvas, d, logo){
   const rcx = rx + rw/2;
   ctx.textAlign='center'; ctx.textBaseline='top';
 
-  // ── NGÀY — header phải, chữ đen đậm to ──
+  // ── NGÀY — cột phải, không giới hạn HDR_H, chữ đen đậm to tối đa ──
+  // Không vẽ đường kẻ ngang ở cột phải — ngày tháng tự chiếm vùng đầu
+  let dateBottomY = T;  // Y kết thúc phần ngày — dùng để tính treeAreaT
   if(d.date){
     ctx.textBaseline='middle';
-    // Tách DD/MM và YYYY → 2 dòng, chữ đen đậm
     const dParts = d.date.split('/');
     if(dParts.length === 3){
-      const line1 = dParts[0]+'/'+dParts[1];   // DD/MM — to nhất
+      const line1 = dParts[0]+'/'+dParts[1];   // DD/MM
       const line2 = dParts[2];                  // YYYY
-      const sz1   = fitSz(ctx, line1, rw-4, 52, 28, '900');
-      const sz2   = fitSz(ctx, line2, rw-4, 34, 20, '700');
-      const gap   = 2;
+      // Tối đa hoá size — không bị giới hạn bởi HDR_H
+      const sz1   = fitSz(ctx, line1, rw, 72, 36, '900');
+      const sz2   = fitSz(ctx, line2, rw, 44, 24, '700');
+      const gap   = 6;
       const totalH= sz1 + gap + sz2;
-      const startY= T + (HDR_H - totalH)/2;
+      const startY= T + PAD;
       ctx.fillStyle='#000';
       ctx.font = '900 '+sz1+'px '+FONT;
       ctx.fillText(line1, rcx, startY + sz1/2);
       ctx.font = '700 '+sz2+'px '+FONT;
       ctx.fillText(line2, rcx, startY + sz1 + gap + sz2/2);
+      dateBottomY = startY + totalH + PAD;
     } else {
-      const szD = fitSz(ctx, d.date, rw-4, 52, 26, '900');
+      const szD = fitSz(ctx, d.date, rw, 72, 32, '900');
       ctx.fillStyle='#000';
       ctx.font = '900 '+szD+'px '+FONT;
-      ctx.fillText(d.date, rcx, T + HDR_H/2);
+      ctx.fillText(d.date, rcx, T + PAD + szD/2);
+      dateBottomY = T + PAD + szD + PAD;
     }
     ctx.textBaseline='top';
     ctx.fillStyle='#000';
-    // Đường kẻ dưới header phải
-    ctx.beginPath(); ctx.moveTo(rx, T+HDR_H); ctx.lineTo(R-6, T+HDR_H);
-    ctx.lineWidth=2.5; ctx.stroke();
-  } else {
-    ctx.beginPath(); ctx.moveTo(rx, T+HDR_H); ctx.lineTo(R-6, T+HDR_H);
-    ctx.lineWidth=2.5; ctx.stroke();
+    // Đường kẻ mỏng dưới phần ngày
+    ctx.beginPath(); ctx.moveTo(rx, dateBottomY); ctx.lineTo(R-PAD, dateBottomY);
+    ctx.lineWidth=1.5; ctx.stroke();
   }
 
   // ── MÃ CÂY — căn giữa toàn bộ vùng cột phải (trừ header + footer + tổng) ──
@@ -565,7 +566,7 @@ function draw(canvas, d, logo){
     const part2 = dashIdx > 0 ? raw.slice(dashIdx).replace(/^[\s\-]+/,'').trim() : '';
 
     // Tính vùng khả dụng cho mã cây (giữa header và TỔNG/footer)
-    const treeAreaT = T + HDR_H + 10;
+    const treeAreaT = dateBottomY + 8;  // bắt đầu ngay dưới phần ngày
     const treeAreaB = d.total
       ? (()=>{ const sz=fitSz(ctx,('TỔNG: '+d.total),rw,50,26,'bold'); return B-50-Math.round(sz*1.5)-20; })()
       : B - 50 - 10;
