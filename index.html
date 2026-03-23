@@ -624,13 +624,13 @@ function draw(canvas, d, logo){
     const sz  = fitSz(ctx, txt, rw, 46, 24, 'bold');
     const lh  = Math.round(sz * 1.3);   // chiều cao dòng chữ
     // tY = đỉnh đường kẻ, chữ nằm bên dưới đường kẻ
-    const tY  = fY - PAD/2 - lh - 5;
+    const tY  = fY - PAD/2 - lh - 6;
     ctx.beginPath(); ctx.moveTo(rx, tY); ctx.lineTo(R - PAD, tY);
     ctx.lineWidth=3; ctx.stroke();
     ctx.font = '700 '+sz+'px '+FONT;
     ctx.textAlign='center'; ctx.textBaseline='top';
     ctx.fillStyle='#000';
-    ctx.fillText(txt, rcx, tY + 6);   // chữ nằm dưới đường kẻ, cách 6px
+    ctx.fillText(txt, rcx, tY + 8);   // chữ nằm dưới đường kẻ, cách 6px
   }
 }
 
