@@ -525,37 +525,35 @@ function draw(canvas, d, logo){
 
   // ── NGÀY — cột phải, không giới hạn HDR_H, chữ đen đậm to tối đa ──
   // Không vẽ đường kẻ ngang ở cột phải — ngày tháng tự chiếm vùng đầu
-  let dateBottomY = T;  // Y kết thúc phần ngày — dùng để tính treeAreaT
+  let dateBottomY = T;
   if(d.date){
-    ctx.textBaseline='middle';
+    // Dùng textBaseline='top' cho chính xác — y là đỉnh chữ
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#000';
     const dParts = d.date.split('/');
     if(dParts.length === 3){
-      const line1 = dParts[0]+'/'+dParts[1];   // DD/MM
+      const line1 = dParts[0]+'/'+dParts[1];   // DD/MM — to nhất
       const line2 = dParts[2];                  // YYYY
-      // Tối đa hoá size — không bị giới hạn bởi HDR_H
-      const sz1   = fitSz(ctx, line1, rw, 72, 36, '900');
-      const sz2   = fitSz(ctx, line2, rw, 44, 24, '700');
-      const gap   = 6;
-      const totalH= sz1 + gap + sz2;
-      const startY= T + PAD;
-      ctx.fillStyle='#000';
+      const sz1   = fitSz(ctx, line1, rw, 86, 40, '900');
+      const sz2   = fitSz(ctx, line2, rw, 52, 26, '700');
+      const gap   = 10;
+      const yLine1 = T + PAD;
+      const yLine2 = yLine1 + sz1 + gap;
       ctx.font = '900 '+sz1+'px '+FONT;
-      ctx.fillText(line1, rcx, startY + sz1/2);
+      ctx.fillText(line1, rcx, yLine1);
       ctx.font = '700 '+sz2+'px '+FONT;
-      ctx.fillText(line2, rcx, startY + sz1 + gap + sz2/2);
-      dateBottomY = startY + totalH + PAD;
+      ctx.fillText(line2, rcx, yLine2);
+      // Đường kẻ nằm dưới năm, thêm padding để không đè lên chữ
+      dateBottomY = yLine2 + sz2 + PAD;
     } else {
-      const szD = fitSz(ctx, d.date, rw, 72, 32, '900');
-      ctx.fillStyle='#000';
+      const szD = fitSz(ctx, d.date, rw, 86, 36, '900');
       ctx.font = '900 '+szD+'px '+FONT;
-      ctx.fillText(d.date, rcx, T + PAD + szD/2);
+      ctx.fillText(d.date, rcx, T + PAD);
       dateBottomY = T + PAD + szD + PAD;
     }
-    ctx.textBaseline='top';
-    ctx.fillStyle='#000';
-    // Đường kẻ mỏng dưới phần ngày
+    // Đường kẻ phân tách — cách chữ đủ xa
     ctx.beginPath(); ctx.moveTo(rx, dateBottomY); ctx.lineTo(R-PAD, dateBottomY);
-    ctx.lineWidth=1.5; ctx.stroke();
+    ctx.lineWidth = 1.5; ctx.stroke();
   }
 
   // ── MÃ CÂY — căn giữa toàn bộ vùng cột phải (trừ header + footer + tổng) ──
