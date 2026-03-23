@@ -214,8 +214,8 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;min-height:100vh;padding-bo
 // Nếu đang truy cập qua local IP (LAN) → dùng chính server đó luôn
 // Nếu qua internet/tunnel → dùng tunnel URL theo khu được chọn
 const SRV = {
-  A: 'https://aserver.thangmotsach.com/in_label',
-  B: 'https://bserver.thangmotsach.com/in_label'
+  A: 'https://a_label_print.thangmotsach.com/in_label',
+  B: 'https://b_label_print.thangmotsach.com/in_label'
 };
 // Local = truy cập qua IP hoặc hostname không phải domain công ty
 const IS_LOCAL = /^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
@@ -523,40 +523,35 @@ function draw(canvas, d, logo){
   const rcx = rx + rw/2;
   ctx.textAlign='center'; ctx.textBaseline='top';
 
-  // ── NGÀY — header phải, nền đen chữ trắng ──
+  // ── NGÀY — header phải, chữ đen đậm to ──
   if(d.date){
-    // Nền đen toàn bộ header phải
-    ctx.fillStyle='#000';
-    ctx.fillRect(DX+LW, T, CW-DX-LW-PR-LW/2, HDR_H);
-    ctx.fillStyle='#fff';
     ctx.textBaseline='middle';
-
-    // Tách ngày: DD/MM | YYYY → 2 dòng to rõ
-    const dParts = d.date.split('/');  // ['DD','MM','YYYY']
+    // Tách DD/MM và YYYY → 2 dòng, chữ đen đậm
+    const dParts = d.date.split('/');
     if(dParts.length === 3){
-      const line1 = dParts[0]+'/'+dParts[1];   // DD/MM
+      const line1 = dParts[0]+'/'+dParts[1];   // DD/MM — to nhất
       const line2 = dParts[2];                  // YYYY
-      const sz1   = fitSz(ctx, line1, rw-8, 38, 22, '800');
-      const sz2   = fitSz(ctx, line2, rw-8, 28, 18, '600');
-      const gap   = 4;
+      const sz1   = fitSz(ctx, line1, rw-4, 52, 28, '900');
+      const sz2   = fitSz(ctx, line2, rw-4, 34, 20, '700');
+      const gap   = 2;
       const totalH= sz1 + gap + sz2;
       const startY= T + (HDR_H - totalH)/2;
-      // Dòng 1: DD/MM
-      ctx.font = '800 '+sz1+'px '+FONT;
+      ctx.fillStyle='#000';
+      ctx.font = '900 '+sz1+'px '+FONT;
       ctx.fillText(line1, rcx, startY + sz1/2);
-      // Dòng 2: YYYY — nhỏ hơn, nhạt hơn
-      ctx.fillStyle='rgba(255,255,255,0.75)';
-      ctx.font = '600 '+sz2+'px '+FONT;
+      ctx.font = '700 '+sz2+'px '+FONT;
       ctx.fillText(line2, rcx, startY + sz1 + gap + sz2/2);
-      ctx.fillStyle='#fff';
     } else {
-      // Fallback: in nguyên 1 dòng
-      const szD = fitSz(ctx, d.date, rw-8, 34, 20, '700');
-      ctx.font = '700 '+szD+'px '+FONT;
+      const szD = fitSz(ctx, d.date, rw-4, 52, 26, '900');
+      ctx.fillStyle='#000';
+      ctx.font = '900 '+szD+'px '+FONT;
       ctx.fillText(d.date, rcx, T + HDR_H/2);
     }
     ctx.textBaseline='top';
     ctx.fillStyle='#000';
+    // Đường kẻ dưới header phải
+    ctx.beginPath(); ctx.moveTo(rx, T+HDR_H); ctx.lineTo(R-6, T+HDR_H);
+    ctx.lineWidth=2.5; ctx.stroke();
   } else {
     ctx.beginPath(); ctx.moveTo(rx, T+HDR_H); ctx.lineTo(R-6, T+HDR_H);
     ctx.lineWidth=2.5; ctx.stroke();

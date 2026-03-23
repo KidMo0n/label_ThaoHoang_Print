@@ -16,8 +16,8 @@ AppSheet
 thaohoang-label.thangmotsach.com  (Cloudflare Pages)
    │  POST /in_label/print
    │
-   ├──▶  aserver.thangmotsach.com/in_label  →  Khu A (192.168.0.6:4001)   →  XP-365B
-   └──▶  bserver.thangmotsach.com/in_label  →  Khu B (192.168.2.14:4001)  →  XP-470B
+   ├──▶  a_label_print.thangmotsach.com/in_label  →  Khu A (192.168.0.6:4001)   →  XP-365B
+   └──▶  b_label_print.thangmotsach.com/in_label  →  Khu B (192.168.2.14:4001)  →  XP-470B
 ```
 
 **Luồng xử lý:**
@@ -48,8 +48,8 @@ in_label/
 
 | Khu | Tunnel URL | IP local | Port | Máy in |
 |-----|-----------|----------|------|--------|
-| A | aserver.thangmotsach.com/in_label | 192.168.0.6 | 4001 | XPrinter XP-365B |
-| B | bserver.thangmotsach.com/in_label | 192.168.2.14 | 4001 | XPrinter XP-470B |
+| A | a_label_print.thangmotsach.com/in_label | 192.168.0.6 | 4001 | XPrinter XP-365B |
+| B | b_label_print.thangmotsach.com/in_label | 192.168.2.14 | 4001 | XPrinter XP-470B |
 
 - Khổ giấy: `Custom.73x97mm` (73×97mm, portrait)
 - Driver: XP-470B (grayscale) / XP-365B (grayscale)
