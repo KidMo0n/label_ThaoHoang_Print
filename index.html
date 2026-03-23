@@ -624,7 +624,7 @@ function draw(canvas, d, logo){
     const sz  = fitSz(ctx, txt, rw, 46, 24, 'bold');
     const lh  = Math.round(sz * 1.3);   // chiều cao dòng chữ
     // tY = đỉnh đường kẻ, chữ nằm bên dưới đường kẻ
-    const tY  = fY - PAD/2 - lh - 7;
+    const tY  = fY - PAD/2 - lh - 5;
     ctx.beginPath(); ctx.moveTo(rx, tY); ctx.lineTo(R - PAD, tY);
     ctx.lineWidth=3; ctx.stroke();
     ctx.font = '700 '+sz+'px '+FONT;
