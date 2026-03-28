@@ -1,13 +1,26 @@
 /**
- * server.js — Thao Hoang Orchid Print Server
+ * server.js — Thảo Hoàng Orchid | Print Server
  *
- * Frontend (index.html) vẽ canvas landscape 1146×862px, xoay 90°CW ngay
- * trên trình duyệt → gửi PNG portrait 862×1146px đến đây.
- * Server chỉ cần nhận PNG và lp in — không cần node-canvas hay ImageMagick.
+ * ┌─────────────────────────────────────────────────────────┐
+ *  PATH MAP (local LAN = http://IP:4001 | tunnel = domain)
  *
- * Dependency: express   (npm install express)
+ *  GET  /                     → index.html  (trang chủ)
+ *  GET  /in_label             → index.html  (trang chủ)
+ *  GET  /in_label/health      → JSON status máy in tem
+ *  POST /in_label/print       → In tem (PNG base64)
+ *
+ *  GET  /in_a4                → index.html  (trang chủ)
+ *  GET  /in_a4/health         → JSON status máy in A4
+ *  POST /in_a4/print          → In A4 (PDF/DOCX/IMG base64)
+ * └─────────────────────────────────────────────────────────┘
+ *
+ * Cloudflare Tunnel routing:
+ *   a_print.thangmotsach.com  → http://192.168.0.6:4001
+ *   b_print.thangmotsach.com  → http://192.168.2.14:4001
+ *
+ * Dependency: express  (npm install)
  * Chạy      : node server.js
- * Service   : sudo ./install-service.sh
+ * Service   : sudo ./install.sh
  */
 
 'use strict';
@@ -18,29 +31,41 @@ const os       = require('os');
 const path     = require('path');
 const { exec } = require('child_process');
 
-// ─── CONFIG ────────────────────────────────────────────
-const PORT    = 4001;
-const IS_A    = os.hostname().toLowerCase().includes('aserver');
-const PRINTER = IS_A ? 'XP-365B' : 'XP-470B';
-const MEDIA   = 'Custom.73x97mm';
+// ─── CONFIG ────────────────────────────────────────────────────────────
+const PORT = 4001;
 
-// ── Máy in A4 — điền tên CUPS printer sau khi biết ──
-// Xem tên bằng: lpstat -a  hoặc  lpstat -v
-const PRINTER_A4_KHU_A = 'A4-Printer-KhuA';   // TODO: thay bằng tên thật
-const PRINTER_A4_KHU_B = 'A4-Printer-KhuB';   // TODO: thay bằng tên thật
-const PRINTER_A4 = IS_A ? PRINTER_A4_KHU_A : PRINTER_A4_KHU_B;
+// Nhận dạng khu bằng hostname
+// Đặt hostname trên từng máy:
+//   sudo hostnamectl set-hostname print-khu-a   (Khu A)
+//   sudo hostnamectl set-hostname print-khu-b   (Khu B)
+const HOSTNAME = os.hostname().toLowerCase();
+const IS_A     = HOSTNAME.includes('khu-a') || HOSTNAME.includes('khua') || HOSTNAME.includes('aserver');
+const KHU      = IS_A ? 'A' : 'B';
 
-console.log('─────────────────────────────────────');
-console.log(`  Khu      : ${IS_A ? 'A' : 'B'}`);
-console.log(`  Printer  : ${PRINTER}`);
-console.log(`  Printer A4: ${PRINTER_A4}`);
-console.log(`  Media    : ${MEDIA}`);
-console.log(`  Port     : ${PORT}`);
-console.log('─────────────────────────────────────');
+// ── Máy in tem (XPrinter) ─────────────────────────────────────────────
+const PRINTER_LABEL_A = 'XP-365B';
+const PRINTER_LABEL_B = 'XP-470B';
+const PRINTER_LABEL   = IS_A ? PRINTER_LABEL_A : PRINTER_LABEL_B;
+const MEDIA_LABEL     = 'Custom.73x97mm';
 
-// ─── APP ───────────────────────────────────────────────
+// ── Máy in A4 ─────────────────────────────────────────────────────────
+// TODO: chạy "lpstat -a" trên từng server để lấy tên CUPS thật
+const PRINTER_A4_A = 'A4-Printer-KhuA';
+const PRINTER_A4_B = 'A4-Printer-KhuB';
+const PRINTER_A4   = IS_A ? PRINTER_A4_A : PRINTER_A4_B;
+
+console.log('──────────────────────────────────────────');
+console.log(`  Khu          : ${KHU}`);
+console.log(`  Hostname     : ${HOSTNAME}`);
+console.log(`  Printer label: ${PRINTER_LABEL}`);
+console.log(`  Printer A4   : ${PRINTER_A4}`);
+console.log(`  Media label  : ${MEDIA_LABEL}`);
+console.log(`  Port         : ${PORT}`);
+console.log('──────────────────────────────────────────');
+
+// ─── APP ───────────────────────────────────────────────────────────────
 const app = express();
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin',  '*');
@@ -50,87 +75,79 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── HEALTH ────────────────────────────────────────────
-// Serve frontend
-// - Local LAN : http://192.168.x.x:4001/
-// - Tunnel    : https://bserver.thangmotsach.com/in_label/
-app.get(['/in_label', '/in_label/'], (req, res) =>
-  res.sendFile(path.join(__dirname, 'index.html'))
-);
-app.get(['/', '/index.html'], (req, res) =>
-  res.sendFile(path.join(__dirname, 'index.html'))
-);
+const HTML    = path.join(__dirname, 'index.html');
+const sendHTML = (res) => res.sendFile(HTML);
 
-app.get('/in_label/health', (req, res) => {
-  exec(`lpstat -p "${PRINTER}" 2>&1`, (err, out) => {
+// ─── SERVE HTML ────────────────────────────────────────────────────────
+app.get('/',           (_req, res) => sendHTML(res));
+app.get('/index.html', (_req, res) => sendHTML(res));
+app.get('/in_label',   (_req, res) => sendHTML(res));
+app.get('/in_a4',      (_req, res) => sendHTML(res));
+
+// ─── /in_label/health ─────────────────────────────────────────────────
+app.get('/in_label/health', (_req, res) => {
+  exec(`lpstat -p "${PRINTER_LABEL}" 2>&1`, (err, out) => {
     res.json({
       status   : 'ok',
-      khu      : IS_A ? 'A' : 'B',
-      printer  : PRINTER,
+      khu      : KHU,
+      printer  : PRINTER_LABEL,
       available: !err && !out.toLowerCase().includes('unknown'),
-      media    : MEDIA,
+      media    : MEDIA_LABEL,
       timestamp: new Date().toISOString()
     });
   });
 });
 
-// ─── PRINT ─────────────────────────────────────────────
-// Frontend đã xoay 90°CW — nhận PNG portrait, ghi tạm, lp in, xóa
+// ─── /in_label/print ──────────────────────────────────────────────────
 app.post('/in_label/print', (req, res) => {
   const { imageBase64, numCopies = 1 } = req.body;
-  if (!imageBase64) return res.json({ success: false, message: 'Thieu imageBase64' });
+  if (!imageBase64) return res.json({ success: false, message: 'Thiếu imageBase64' });
 
   const copies = Math.max(1, Math.min(999, parseInt(numCopies) || 1));
   const pngTmp = path.join(os.tmpdir(), `label_${Date.now()}.png`);
 
-  console.log(`\n[PRINT] ${new Date().toLocaleString('vi-VN')}  copies=${copies}`);
+  console.log(`\n[LABEL] ${new Date().toLocaleString('vi-VN')}  copies=${copies}`);
 
   try {
     fs.writeFileSync(pngTmp, Buffer.from(imageBase64, 'base64'));
   } catch (e) {
-    return res.json({ success: false, message: 'Loi ghi file: ' + e.message });
+    return res.json({ success: false, message: 'Lỗi ghi file: ' + e.message });
   }
 
   const cmd = [
     'lp',
-    `-d "${PRINTER}"`,
+    `-d "${PRINTER_LABEL}"`,
     `-n ${copies}`,
-    `-o media=${MEDIA}`,
+    `-o media=${MEDIA_LABEL}`,
     `-o fit-to-page`,
     `-o page-left=0 -o page-right=0 -o page-top=0 -o page-bottom=0`,
     `"${pngTmp}"`
   ].join(' ');
 
-  console.log(`[PRINT] ${cmd}`);
+  console.log(`[LABEL] ${cmd}`);
 
   exec(cmd, (err, _out, stderr) => {
     try { fs.unlinkSync(pngTmp); } catch (_) {}
-
     if (err) {
-      console.error('[PRINT] lp error:', err.message);
-      return res.json({ success: false, message: `Loi may in: ${err.message}` });
+      console.error('[LABEL] lp error:', err.message);
+      return res.json({ success: false, message: `Lỗi máy in: ${err.message}` });
     }
-    if (stderr) console.warn('[PRINT] stderr:', stderr);
-
-    console.log(`[PRINT] OK — ${copies} ban → ${PRINTER}`);
+    if (stderr) console.warn('[LABEL] stderr:', stderr);
+    console.log(`[LABEL] OK — ${copies} bản → ${PRINTER_LABEL}`);
     res.json({
       success: true,
-      message: `Da gui ${copies} tem den Khu ${IS_A ? 'A' : 'B'}`,
-      details: { printer: PRINTER, copies, ts: new Date().toLocaleString('vi-VN') }
+      message: `Đã gửi ${copies} tem đến Khu ${KHU}`,
+      details: { printer: PRINTER_LABEL, copies, ts: new Date().toLocaleString('vi-VN') }
     });
   });
 });
 
-// ─── PRINT A4 ──────────────────────────────────────────
-// Nhận file (PDF / DOCX / PNG / JPG) dưới dạng base64
-// DOCX  → LibreOffice headless chuyển sang PDF → lp
-// PDF   → lp trực tiếp
-// Image → lp trực tiếp (CUPS tự scale fit A4)
-app.get('/in_label/health_a4', (req, res) => {
+// ─── /in_a4/health ────────────────────────────────────────────────────
+app.get('/in_a4/health', (_req, res) => {
   exec(`lpstat -p "${PRINTER_A4}" 2>&1`, (err, out) => {
     res.json({
       status    : 'ok',
-      khu       : IS_A ? 'A' : 'B',
+      khu       : KHU,
       printer_a4: PRINTER_A4,
       available : !err && !out.toLowerCase().includes('unknown'),
       timestamp : new Date().toISOString()
@@ -138,42 +155,39 @@ app.get('/in_label/health_a4', (req, res) => {
   });
 });
 
-app.post('/in_label/print_a4', async (req, res) => {
-  const { fileBase64, fileName = 'document', numCopies = 1, sides = 'one-sided' } = req.body;
+// ─── /in_a4/print ─────────────────────────────────────────────────────
+app.post('/in_a4/print', async (req, res) => {
+  const { fileBase64, fileName = 'document', numCopies = 1 } = req.body;
   if (!fileBase64) return res.json({ success: false, message: 'Thiếu fileBase64' });
 
-  const copies = Math.max(1, Math.min(99, parseInt(numCopies) || 1));
-  const ext    = (fileName.split('.').pop() || 'pdf').toLowerCase();
-  const ts     = Date.now();
-  const tmpIn  = path.join(os.tmpdir(), `a4_${ts}.${ext}`);
+  const copies  = Math.max(1, Math.min(99, parseInt(numCopies) || 1));
+  const ext     = (fileName.split('.').pop() || 'pdf').toLowerCase();
+  const ts      = Date.now();
+  const tmpIn   = path.join(os.tmpdir(), `a4_${ts}.${ext}`);
   let   printTarget = tmpIn;
 
-  console.log(`\n[A4] ${new Date().toLocaleString('vi-VN')}  file=${fileName}  copies=${copies}  sides=${sides}`);
+  console.log(`\n[A4] ${new Date().toLocaleString('vi-VN')}  file=${fileName}  copies=${copies}`);
 
-  // Ghi file gốc xuống tmp
   try {
     fs.writeFileSync(tmpIn, Buffer.from(fileBase64, 'base64'));
   } catch (e) {
     return res.json({ success: false, message: 'Lỗi ghi file: ' + e.message });
   }
 
-  // Nếu là DOCX → chuyển sang PDF bằng LibreOffice
   const cleanup = () => {
     try { fs.unlinkSync(tmpIn); } catch (_) {}
     if (printTarget !== tmpIn) { try { fs.unlinkSync(printTarget); } catch (_) {} }
   };
 
-  const isDocx = ['docx','doc','odt','xlsx','xls','pptx','ppt'].includes(ext);
-  if (isDocx) {
+  const isOffice = ['docx','doc','odt','xlsx','xls','pptx','ppt'].includes(ext);
+  if (isOffice) {
     const tmpDir  = os.tmpdir();
-    const pdfName = path.basename(tmpIn, '.' + ext) + '.pdf';
-    const pdfOut  = path.join(tmpDir, pdfName);
-
+    const pdfOut  = path.join(tmpDir, path.basename(tmpIn, '.' + ext) + '.pdf');
     try {
       await new Promise((resolve, reject) => {
-        const libreCmd = `libreoffice --headless --convert-to pdf --outdir "${tmpDir}" "${tmpIn}"`;
-        console.log(`[A4] convert: ${libreCmd}`);
-        exec(libreCmd, { timeout: 30000 }, (err, _, stderr) => {
+        const cmd = `libreoffice --headless --convert-to pdf --outdir "${tmpDir}" "${tmpIn}"`;
+        console.log(`[A4] convert: ${cmd}`);
+        exec(cmd, { timeout: 30000 }, (err, _, stderr) => {
           if (err) return reject(new Error('LibreOffice: ' + (stderr || err.message)));
           if (!fs.existsSync(pdfOut)) return reject(new Error('PDF output không tìm thấy'));
           resolve();
@@ -186,17 +200,12 @@ app.post('/in_label/print_a4', async (req, res) => {
     }
   }
 
-  // Lệnh lp in A4
-  const sidesOpt = sides === 'two-sided-long-edge' ? 'two-sided-long-edge'
-                 : sides === 'two-sided-short-edge' ? 'two-sided-short-edge'
-                 : 'one-sided';
-
   const cmd = [
     'lp',
     `-d "${PRINTER_A4}"`,
     `-n ${copies}`,
     `-o media=A4`,
-    `-o sides=${sidesOpt}`,
+    `-o sides=one-sided`,
     `-o fit-to-page`,
     `"${printTarget}"`
   ].join(' ');
@@ -213,18 +222,21 @@ app.post('/in_label/print_a4', async (req, res) => {
     console.log(`[A4] OK — ${copies} bản → ${PRINTER_A4}`);
     res.json({
       success: true,
-      message: `Đã gửi ${copies} bản đến Khu ${IS_A ? 'A' : 'B'}`,
-      details : { printer: PRINTER_A4, copies, fileName, ts: new Date().toLocaleString('vi-VN') }
+      message: `Đã gửi ${copies} bản đến Khu ${KHU}`,
+      details: { printer: PRINTER_A4, copies, fileName, ts: new Date().toLocaleString('vi-VN') }
     });
   });
 });
 
-// ─── 404 ───────────────────────────────────────────────
+// ─── 404 ───────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ success: false, message: 'Not found: ' + req.path }));
 
-// ─── START ─────────────────────────────────────────────
+// ─── START ─────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n✅  Print server → http://0.0.0.0:${PORT}`);
-  console.log(`    GET  /health — kiem tra trang thai`);
-  console.log(`    POST /print  — {imageBase64, numCopies}\n`);
+  console.log(`    Khu ${KHU} | Label: ${PRINTER_LABEL} | A4: ${PRINTER_A4}`);
+  console.log(`    GET  /in_label/health  — status máy in tem`);
+  console.log(`    POST /in_label/print   — {imageBase64, numCopies}`);
+  console.log(`    GET  /in_a4/health     — status máy in A4`);
+  console.log(`    POST /in_a4/print      — {fileBase64, fileName, numCopies}\n`);
 });

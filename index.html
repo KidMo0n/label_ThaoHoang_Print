@@ -347,17 +347,27 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;min-height:100vh;padding-bo
 // ═══════════════════════════════════════════════════════
 //  CONFIG
 // ═══════════════════════════════════════════════════════
-// Nếu đang truy cập qua local IP (LAN) → dùng chính server đó luôn
-// Nếu qua internet/tunnel → dùng tunnel URL theo khu được chọn
+//  CONFIG — Tunnel URLs
+//  Khu A: a_print.thangmotsach.com  →  server 192.168.0.6:4001
+//  Khu B: b_print.thangmotsach.com  →  server 192.168.2.14:4001
+//
+//  Local LAN: dùng chính origin của server đang truy cập
+// ═══════════════════════════════════════════════════════
 const SRV = {
-  A: 'https://a_label_print.thangmotsach.com/in_label',
-  B: 'https://b_label_print.thangmotsach.com/in_label'
+  A: 'https://a_print.thangmotsach.com/in_label',
+  B: 'https://b_print.thangmotsach.com/in_label'
+};
+const SRV_A4 = {
+  A: 'https://a_print.thangmotsach.com/in_a4',
+  B: 'https://b_print.thangmotsach.com/in_a4'
 };
 // Local = truy cập qua IP hoặc hostname không phải domain công ty
 const IS_LOCAL = /^(localhost|127\.|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
 if(IS_LOCAL){
-  SRV.A = location.origin + '/in_label';
-  SRV.B = location.origin + '/in_label';
+  SRV.A    = location.origin + '/in_label';
+  SRV.B    = location.origin + '/in_label';
+  SRV_A4.A = location.origin + '/in_a4';
+  SRV_A4.B = location.origin + '/in_a4';
 }
 
 // Logo base64 — thay bằng logo thật nếu có (data:image/png;base64,... hoặc data:image/svg+xml;base64,...)
@@ -1257,7 +1267,7 @@ async function doPrintA4(){
   ss('s1','ok'); ss('s2','act');
 
   try{
-    const resp = await fetch(SRV[khuA4]+'/print_a4',{
+    const resp = await fetch(SRV_A4[khuA4]+'/print',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ fileBase64: a4B64, fileName: a4File.name, numCopies: copies })
