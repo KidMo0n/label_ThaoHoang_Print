@@ -1359,33 +1359,48 @@ async function settingsLoad(){
   const msgEl = ge('sMsg');
   msgEl.className = 'smsg';
 
-  // Bước 1: lấy config local (server hiện tại)
+  const h = window.location.hostname;
+  ge('sInfoHost').textContent = h;
+
+  // Thử fetch /config — nếu server này có Node.js thì sẽ trả JSON hợp lệ
+  // Nếu là Cloudflare Pages (static) hoặc server chưa chạy → trả HTML → vào dual mode
+  let cfgRes = null;
   try {
-    const cfgRes = await fetch('/config').then(r=>r.json());
-    if(!cfgRes || !cfgRes.success) throw new Error('Không lấy được config');
+    const r = await fetch('/config');
+    const text = await r.text();
+    if(!text.trim().startsWith('<')){
+      cfgRes = JSON.parse(text);
+    }
+  } catch(_){}
+
+  if(cfgRes && cfgRes.success){
+    // Single mode: server hiện tại là Node.js print server
     _localConfig = cfgRes;
     _servers = (cfgRes.config && cfgRes.config.servers) || null;
-
-    // Hiển thị thông tin kết nối
-    const h = window.location.hostname;
     ge('sInfoHost').textContent = cfgRes.hostname || h;
-
-    // Xác định mode
-    const isA = h.includes('a_print') || h.includes('a-print');
-    const isB = h.includes('b_print') || h.includes('b-print');
-    const isSingle = isA || isB || h === 'localhost' || /^[\d.]+$/.test(h);
-
-    if(isSingle){
-      ge('sInfoMode').textContent = `Khu ${cfgRes.khu} (${h})`;
-      await renderSingleMode(cfgRes.khu, '/');
-    } else {
-      ge('sInfoMode').textContent = `Trang tổng — quản lý cả 2 khu`;
-      await renderDualMode();
-    }
-  } catch(e){
-    msgEl.className = 'smsg err';
-    msgEl.textContent = 'Lỗi: ' + e.message;
+    ge('sInfoMode').textContent = `Khu ${cfgRes.khu} — ${h}`;
+    await renderSingleMode(cfgRes.khu, '/');
+  } else {
+    // Dual mode: trang tổng (Cloudflare Pages, static host, v.v.)
+    ge('sInfoMode').textContent = 'Trang tổng — quản lý cả 2 khu';
+    _servers = _loadSavedServers();
+    await renderDualMode();
   }
+}
+
+// Lưu/đọc servers URL từ localStorage (chỉ dùng cho trang tổng)
+function _loadSavedServers(){
+  try {
+    const s = localStorage.getItem('thaohoang_servers');
+    if(s) return JSON.parse(s);
+  } catch(_){}
+  return {
+    a: 'https://a_print.thangmotsach.com',
+    b: 'https://b_print.thangmotsach.com'
+  };
+}
+function _saveSavedServers(obj){
+  try { localStorage.setItem('thaohoang_servers', JSON.stringify(obj)); } catch(_){}
 }
 
 // ── Single Mode: chỉ show config khu hiện tại ─────────────────────────
@@ -1401,30 +1416,71 @@ async function renderSingleMode(khu, baseUrl){
 
 // ── Dual Mode: show 2 card, mỗi card fetch độc lập ────────────────────
 async function renderDualMode(){
-  if(!_servers){
+  const container = ge('sKhuContainer');
+
+  // Luôn show form nhập URL server ở đầu (dual mode)
+  const urlFormHtml = `
+  <div class="scard" style="background:#1a1a2e;margin-bottom:10px;">
+    <h4 class="blue">🔗 URL các server khu</h4>
+    <div class="srow">
+      <label>URL Khu A</label>
+      <input type="text" id="dualSrvA" value="${_servers ? _servers.a : 'https://a_print.thangmotsach.com'}" placeholder="https://a_print.thangmotsach.com">
+    </div>
+    <div class="srow">
+      <label>URL Khu B</label>
+      <input type="text" id="dualSrvB" value="${_servers ? _servers.b : 'https://b_print.thangmotsach.com'}" placeholder="https://b_print.thangmotsach.com">
+    </div>
+    <div class="sfooter" style="margin-top:8px;">
+      <button class="sbtn2 reload" onclick="dualRefresh()">🔄 Kết nối / Làm mới</button>
+    </div>
+  </div>
+  <div id="dualCards"></div>`;
+
+  container.innerHTML = urlFormHtml;
+
+  // Tự động fetch ngay
+  await dualRefresh();
+}
+
+async function dualRefresh(){
+  const urlA = (ge('dualSrvA') ? ge('dualSrvA').value.trim() : '') || (_servers && _servers.a) || '';
+  const urlB = (ge('dualSrvB') ? ge('dualSrvB').value.trim() : '') || (_servers && _servers.b) || '';
+  if(!urlA || !urlB){
     ge('sMsg').className = 'smsg err';
-    ge('sMsg').textContent = 'Chưa cấu hình servers trong config.json. Hãy vào từng khu để cài đặt.';
-    ge('sKhuContainer').innerHTML = '';
+    ge('sMsg').textContent = 'Hãy nhập URL 2 server trước.';
     return;
   }
-  const container = ge('sKhuContainer');
-  container.innerHTML = '<div style="color:#6c7086;font-size:12px;padding:8px 0;">Đang tải cả 2 khu…</div>';
+  // Cập nhật và lưu
+  _servers = { a: urlA, b: urlB };
+  _saveSavedServers(_servers);
+
+  const cardsEl = ge('dualCards');
+  if(cardsEl) cardsEl.innerHTML = '<div style="color:#6c7086;font-size:12px;padding:8px 0;">Đang kết nối…</div>';
+
+  async function safeFetchJson(url){
+    try {
+      const r = await fetch(url);
+      const text = await r.text();
+      if(text.trim().startsWith('<')) return null;
+      return JSON.parse(text);
+    } catch(_){ return null; }
+  }
 
   const [resA, resB] = await Promise.all([
     Promise.all([
-      fetch(_servers.a + '/config').then(r=>r.json()).catch(()=>null),
-      fetch(_servers.a + '/printers').then(r=>r.json()).catch(()=>null)
+      safeFetchJson(urlA + '/config'),
+      safeFetchJson(urlA + '/printers')
     ]),
     Promise.all([
-      fetch(_servers.b + '/config').then(r=>r.json()).catch(()=>null),
-      fetch(_servers.b + '/printers').then(r=>r.json()).catch(()=>null)
+      safeFetchJson(urlB + '/config'),
+      safeFetchJson(urlB + '/printers')
     ])
   ]);
 
-  container.innerHTML =
-    buildKhuCard('A', resA[0], resA[1], _servers.a + '/', 'dual') +
+  if(cardsEl) cardsEl.innerHTML =
+    buildKhuCard('A', resA[0], resA[1], urlA + '/', 'dual') +
     '<div class="khusep"></div>' +
-    buildKhuCard('B', resB[0], resB[1], _servers.b + '/', 'dual');
+    buildKhuCard('B', resB[0], resB[1], urlB + '/', 'dual');
 }
 
 // ── Build HTML một card khu ────────────────────────────────────────────
@@ -1502,14 +1558,22 @@ async function settingsReloadKhu(khu, baseUrl){
   const uid = 'khu' + khu;
   const card = ge('card' + uid);
   if(card) card.style.opacity = '0.5';
+  async function safeFetchJson(url){
+    try {
+      const r = await fetch(url);
+      const text = await r.text();
+      if(text.trim().startsWith('<')) return null;
+      return JSON.parse(text);
+    } catch(_){ return null; }
+  }
   try {
     const [cfgRes, printRes] = await Promise.all([
-      fetch(baseUrl + 'config').then(r=>r.json()).catch(()=>null),
-      fetch(baseUrl + 'printers').then(r=>r.json()).catch(()=>null)
+      safeFetchJson(baseUrl + 'config'),
+      safeFetchJson(baseUrl + 'printers')
     ]);
-    // Replace card HTML
+    const mode = baseUrl === '/' ? 'single' : 'dual';
     const tmp = document.createElement('div');
-    tmp.innerHTML = buildKhuCard(khu, cfgRes, printRes, baseUrl, baseUrl==='/' ? 'single':'dual');
+    tmp.innerHTML = buildKhuCard(khu, cfgRes, printRes, baseUrl, mode);
     const newCard = tmp.firstElementChild;
     if(card) card.replaceWith(newCard);
   } catch(e) {
@@ -1534,10 +1598,13 @@ async function settingsSaveKhu(khu, baseUrl){
   if(labelVal)  body.printer_label = labelVal;
   if(a4Val)     body.printer_a4    = a4Val;
   if(mediaVal)  body.media_label   = mediaVal;
+  // Lưu servers vào config.json của server đó (để server tự biết URL của khu kia)
   if(srvAVal || srvBVal){
     body.servers = {};
     if(srvAVal) body.servers.a = srvAVal;
     if(srvBVal) body.servers.b = srvBVal;
+    // Cũng lưu vào localStorage cho trang tổng
+    _saveSavedServers({ a: srvAVal||(_servers&&_servers.a)||'', b: srvBVal||(_servers&&_servers.b)||'' });
   }
 
   if(!Object.keys(body).length){
