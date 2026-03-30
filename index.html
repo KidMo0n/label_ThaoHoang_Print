@@ -736,17 +736,86 @@ function draw(canvas, d, logo){
       ctx.fillText(part2, rcx, startY + h1 + gap);
     }
   }
-  let ry = T + HDR_H + 18; // vẫn dùng cho ghi chú nếu có
-
-  // ── GHI CHÚ ──
+  // ── GHI CHÚ — neo phía trên total/footer ──
   if(d.note && d.note!=='-'){
-    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(R - PAD, ry);
-    ctx.lineWidth=1.5; ctx.stroke(); ry += 12;
-    ctx.font = '600 22px '+FONT; ctx.textAlign='left'; ctx.fillStyle='#000';
-    ctx.fillText('Ghi chú:', rx, ry); ry += 30;
-    ctx.font = 'normal 22px '+FONT;
-    ry = wrapLeft(ctx, d.note, rx, ry, rw, 28);
-    ctx.textAlign='center'; ry += 6;
+    // Tính đáy vùng ghi chú: trên total (nếu có) → trên footer
+    const fH2    = logo ? 68 : 0;
+    const fY2    = B - fH2;
+    let   noteB  = fY2 - 6;   // đáy khả dụng (trên footer)
+    if(d.total){
+      const szT  = fitSz(ctx, 'TỔNG: '+d.total, rw, 46, 24, 'bold');
+      const lhT  = Math.round(szT * 1.25);
+      noteB      = fY2 - 14 - lhT - 10; // trên đường kẻ total
+    }
+    // Đỉnh vùng ghi chú: dưới tree (treeAreaB) hoặc dưới date
+    const noteT = d.tree
+      ? (() => {
+          const _fH = logo ? 50 : 0;
+          return d.total
+            ? (() => { const sz=fitSz(ctx,'TỔNG: '+d.total,rw,50,26,'bold'); return B - PAD*2 - Math.round(sz*1.5) - _fH; })()
+            : B - _fH - PAD;
+        })() + 4
+      : dateBottomY + 8;
+
+    const noteH  = noteB - noteT;  // chiều cao khả dụng cho ghi chú
+
+    if(noteH > 24){
+      // Tìm font size phù hợp: label + text gộp vừa vùng
+      const labelTxt = '📝 ' + d.note;
+      // Thử fit toàn bộ text vào 1 dòng trước
+      const maxSz = 28, minSz = 16;
+      let sz = maxSz;
+      // Tính số dòng khi wrap
+      function countLines(s){
+        ctx.font = 'normal '+s+'px '+FONT;
+        const words = d.note.split(' ');
+        let lines=1, line='';
+        for(const w of words){
+          const t = line ? line+' '+w : w;
+          if(ctx.measureText(t).width > rw-4 && line){ lines++; line=w; }
+          else line = t;
+        }
+        return lines;
+      }
+      // Tổng chiều cao = 1 dòng label + N dòng text
+      while(sz > minSz){
+        const lh  = Math.round(sz * 1.3);
+        const nL  = countLines(sz);
+        const tot = lh + nL * lh + 6; // label + text lines + gap
+        if(tot <= noteH) break;
+        sz -= 2;
+      }
+      const lh = Math.round(sz * 1.3);
+
+      // Tính vị trí Y bắt đầu: căn giữa dọc trong vùng
+      const nL   = countLines(sz);
+      const totH = lh + nL * lh + 6;
+      const noteY = noteT + Math.max(0, (noteH - totH) / 2);
+
+      // Vẽ đường kẻ trên (ngăn cách với tree)
+      ctx.beginPath(); ctx.moveTo(rx, noteT); ctx.lineTo(R - PAD, noteT);
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#aaa'; ctx.stroke();
+      ctx.strokeStyle = '#000';
+
+      // Label "Ghi chú:"
+      ctx.font = '600 '+sz+'px '+FONT;
+      ctx.textAlign = 'left'; ctx.fillStyle = '#555';
+      ctx.fillText('Ghi chú:', rx, noteY);
+
+      // Nội dung ghi chú
+      ctx.font = 'normal '+sz+'px '+FONT;
+      ctx.fillStyle = '#000';
+      const words = d.note.split(' ');
+      let line = '', curY = noteY + lh;
+      for(const w of words){
+        const t = line ? line+' '+w : w;
+        if(ctx.measureText(t).width > rw - 4 && line){
+          ctx.fillText(line, rx, curY); curY += lh; line = w;
+        } else line = t;
+      }
+      if(line) ctx.fillText(line, rx, curY);
+      ctx.textAlign = 'center';
+    }
   }
 
   // ── FOOTER: neo đáy phải — chỉ khi có logo ──
