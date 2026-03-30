@@ -645,6 +645,8 @@ function draw(canvas, d, logo){
     ly = wrapCenter(ctx, addr, lcx, ly, lw, Math.round(sz*1.3));
   }
 
+
+
   // ── ĐƯỜNG KẺ + VẬN CHUYỂN neo đáy trái ──
   if(d.ship){
     const shipUp = d.ship.toUpperCase();
@@ -703,19 +705,59 @@ function draw(canvas, d, logo){
     ctx.lineWidth = 1.5; ctx.stroke();
   }
 
-  // ── MÃ CÂY — căn giữa toàn bộ vùng cột phải (trừ header + footer + tổng) ──
+  // ══════════════════════════════════════════
+  //  CỘT PHẢI: tính toán 3 zone B/C/Total+Footer
+  // ══════════════════════════════════════════
+  //  Zone A : Ngày      (T → dateBottomY)
+  //  Zone B : Tree      (dateBottomY+8 → treeAreaB)
+  //  Zone C : Ghi chú   (treeAreaB → noteAreaB)  ← chỉ khi có note
+  //  Zone D : Total+Footer neo đáy
+  // ══════════════════════════════════════════
+
+  const _fH = logo ? 68 : 0;
+  const fY2 = B - _fH;
+
+  // Tính đáy zone D (top của total+footer block)
+  let zoneDTop = fY2;   // mặc định: ngay trên footer
+  if(d.total){
+    const szT = fitSz(ctx, 'TỔNG: '+d.total, rw, 46, 24, 'bold');
+    const lhT = Math.round(szT * 1.25);
+    zoneDTop  = fY2 - 14 - lhT;   // đường kẻ total nằm ở zoneDTop
+  }
+
+  // Zone C: chiều cao dành cho ghi chú (nếu có)
+  const NOTE_MIN_H = 44;   // tối thiểu để hiển thị được gì đó
+  const NOTE_MAX_H = 120;  // tối đa ~14% chiều cao canvas
+  let noteSz = 0, noteLines = 0, noteLH = 0;
+  let noteAreaH = 0;
+  if(d.note && d.note !== '-'){
+    // Tìm font size và số dòng phù hợp, target NOTE_MAX_H
+    for(let s = 26; s >= 14; s -= 2){
+      ctx.font = 'normal '+s+'px '+FONT;
+      const words = d.note.split(' ');
+      let nl=1, ln='';
+      for(const w of words){
+        const t = ln ? ln+' '+w : w;
+        if(ctx.measureText(t).width > rw-4 && ln){ nl++; ln=w; } else ln=t;
+      }
+      const lh = Math.round(s * 1.35);
+      const labelH = Math.round(s * 1.3);   // 1 dòng "Ghi chú:"
+      const tot = labelH + nl * lh + 10;    // tổng chiều cao block
+      if(tot <= NOTE_MAX_H){ noteSz=s; noteLines=nl; noteLH=lh; noteAreaH=Math.max(NOTE_MIN_H, tot+16); break; }
+    }
+    if(!noteSz){ noteSz=14; noteLH=Math.round(14*1.35); noteLines=1; noteAreaH=NOTE_MIN_H; }
+  }
+
+  // Zone B bottom = zoneDTop - noteAreaH
+  const treeAreaT = dateBottomY + 8;
+  const treeAreaB = zoneDTop - noteAreaH;   // co lại nếu có note
+
+  // ── VẼ ZONE B: MÃ CÂY ──
   if(d.tree){
     const raw = d.tree.trim();
     const dashIdx = raw.indexOf(' - ') !== -1 ? raw.indexOf(' - ') : raw.lastIndexOf('-');
     const part1 = dashIdx > 0 ? raw.slice(0, dashIdx).trim() : raw;
     const part2 = dashIdx > 0 ? raw.slice(dashIdx).replace(/^[\s\-]+/,'').trim() : '';
-
-    // Tính vùng khả dụng cho mã cây
-    const treeAreaT = dateBottomY + 8;
-    const _fH = logo ? 50 : 0;  // footer height — khai báo sớm để tính treeAreaB
-    const treeAreaB = d.total
-      ? (()=>{ const sz=fitSz(ctx,('TỔNG: '+d.total),rw,50,26,'bold'); return B - PAD*2 - Math.round(sz*1.5) - _fH; })()
-      : B - _fH - PAD;
 
     const sz1 = fitSz(ctx, part1, rw, 130, 40, '900');
     const h1  = Math.round(sz1*1.1);
@@ -724,113 +766,59 @@ function draw(canvas, d, logo){
     const gap = part2 ? 8 : 0;
     const totalH = h1 + gap + h2;
 
-    // Căn giữa dọc trong vùng
     const startY = treeAreaT + Math.max(0, (treeAreaB - treeAreaT - totalH)/2);
 
     ctx.fillStyle='#000'; ctx.textAlign='center';
     ctx.font = '900 '+sz1+'px '+FONT;
     ctx.fillText(part1, rcx, startY);
-
     if(part2){
       ctx.font = '700 '+sz2+'px '+FONT;
       ctx.fillText(part2, rcx, startY + h1 + gap);
     }
   }
-  // ── GHI CHÚ — neo phía trên total/footer ──
-  if(d.note && d.note!=='-'){
-    // Tính đáy vùng ghi chú: trên total (nếu có) → trên footer
-    const fH2    = logo ? 68 : 0;
-    const fY2    = B - fH2;
-    let   noteB  = fY2 - 6;   // đáy khả dụng (trên footer)
-    if(d.total){
-      const szT  = fitSz(ctx, 'TỔNG: '+d.total, rw, 46, 24, 'bold');
-      const lhT  = Math.round(szT * 1.25);
-      noteB      = fY2 - 14 - lhT - 10; // trên đường kẻ total
+
+  // ── VẼ ZONE C: GHI CHÚ ──
+  if(d.note && d.note !== '-' && noteSz > 0){
+    const noteZoneT = treeAreaB;
+    const noteZoneB = zoneDTop;
+
+    // Đường kẻ trên zone C
+    ctx.beginPath(); ctx.moveTo(rx, noteZoneT); ctx.lineTo(R - PAD, noteZoneT);
+    ctx.lineWidth = 1.5; ctx.strokeStyle = '#000'; ctx.stroke();
+
+    // Căn giữa dọc trong zone C
+    const labelH  = Math.round(noteSz * 1.3);
+    const textTot = labelH + noteLines * noteLH;
+    const startY  = noteZoneT + Math.max(6, (noteZoneB - noteZoneT - textTot) / 2);
+
+    ctx.textBaseline = 'top'; ctx.textAlign = 'left'; ctx.fillStyle = '#555';
+    ctx.font = '600 '+noteSz+'px '+FONT;
+    ctx.fillText('Ghi chú:', rx, startY);
+
+    ctx.fillStyle = '#000';
+    ctx.font = 'normal '+noteSz+'px '+FONT;
+    const words = d.note.split(' ');
+    let line = '', curY = startY + labelH;
+    for(const w of words){
+      const t = line ? line+' '+w : w;
+      if(ctx.measureText(t).width > rw - 4 && line){
+        ctx.fillText(line, rx, curY); curY += noteLH; line = w;
+      } else line = t;
     }
-    // Đỉnh vùng ghi chú: dưới tree (treeAreaB) hoặc dưới date
-    const noteT = d.tree
-      ? (() => {
-          const _fH = logo ? 50 : 0;
-          return d.total
-            ? (() => { const sz=fitSz(ctx,'TỔNG: '+d.total,rw,50,26,'bold'); return B - PAD*2 - Math.round(sz*1.5) - _fH; })()
-            : B - _fH - PAD;
-        })() + 4
-      : dateBottomY + 8;
-
-    const noteH  = noteB - noteT;  // chiều cao khả dụng cho ghi chú
-
-    if(noteH > 24){
-      // Tìm font size phù hợp: label + text gộp vừa vùng
-      const labelTxt = '📝 ' + d.note;
-      // Thử fit toàn bộ text vào 1 dòng trước
-      const maxSz = 28, minSz = 16;
-      let sz = maxSz;
-      // Tính số dòng khi wrap
-      function countLines(s){
-        ctx.font = 'normal '+s+'px '+FONT;
-        const words = d.note.split(' ');
-        let lines=1, line='';
-        for(const w of words){
-          const t = line ? line+' '+w : w;
-          if(ctx.measureText(t).width > rw-4 && line){ lines++; line=w; }
-          else line = t;
-        }
-        return lines;
-      }
-      // Tổng chiều cao = 1 dòng label + N dòng text
-      while(sz > minSz){
-        const lh  = Math.round(sz * 1.3);
-        const nL  = countLines(sz);
-        const tot = lh + nL * lh + 6; // label + text lines + gap
-        if(tot <= noteH) break;
-        sz -= 2;
-      }
-      const lh = Math.round(sz * 1.3);
-
-      // Tính vị trí Y bắt đầu: căn giữa dọc trong vùng
-      const nL   = countLines(sz);
-      const totH = lh + nL * lh + 6;
-      const noteY = noteT + Math.max(0, (noteH - totH) / 2);
-
-      // Vẽ đường kẻ trên (ngăn cách với tree)
-      ctx.beginPath(); ctx.moveTo(rx, noteT); ctx.lineTo(R - PAD, noteT);
-      ctx.lineWidth = 1.5; ctx.strokeStyle = '#aaa'; ctx.stroke();
-      ctx.strokeStyle = '#000';
-
-      // Label "Ghi chú:"
-      ctx.font = '600 '+sz+'px '+FONT;
-      ctx.textAlign = 'left'; ctx.fillStyle = '#555';
-      ctx.fillText('Ghi chú:', rx, noteY);
-
-      // Nội dung ghi chú
-      ctx.font = 'normal '+sz+'px '+FONT;
-      ctx.fillStyle = '#000';
-      const words = d.note.split(' ');
-      let line = '', curY = noteY + lh;
-      for(const w of words){
-        const t = line ? line+' '+w : w;
-        if(ctx.measureText(t).width > rw - 4 && line){
-          ctx.fillText(line, rx, curY); curY += lh; line = w;
-        } else line = t;
-      }
-      if(line) ctx.fillText(line, rx, curY);
-      ctx.textAlign = 'center';
-    }
+    if(line) ctx.fillText(line, rx, curY);
+    ctx.textAlign = 'center';
   }
 
   // ── FOOTER: neo đáy phải — chỉ khi có logo ──
-  const fH = logo ? 68 : 0;
-  const fY = B - fH;
+  // dùng _fH và fY2 đã tính ở trên
   if(logo){
-    // Đường kẻ trên footer
-    ctx.beginPath(); ctx.moveTo(rx, fY); ctx.lineTo(R - PAD, fY);
+    ctx.beginPath(); ctx.moveTo(rx, fY2); ctx.lineTo(R - PAD, fY2);
     ctx.lineWidth=1.5; ctx.stroke();
     ctx.fillStyle='#000'; ctx.textBaseline='top';
-    // 2 dòng căn giữa trong fH
     ctx.font = '700 18px '+FONT; ctx.textAlign='center';
-    ctx.fillText('-Thảo Hoàng Orchid-', rcx, fY + 8);
+    ctx.fillText('-Thảo Hoàng Orchid-', rcx, fY2 + 8);
     ctx.font = 'normal 16px '+FONT;
-    ctx.fillText('www.thaohoangorchid.com', rcx, fY + 30);
+    ctx.fillText('www.thaohoangorchid.com', rcx, fY2 + 30);
     ctx.textBaseline='top';
   }
 
@@ -839,15 +827,13 @@ function draw(canvas, d, logo){
     const txt = 'TỔNG: ' + d.total;
     const sz  = fitSz(ctx, txt, rw, 46, 24, 'bold');
     const lh  = Math.round(sz * 1.25);
-    const GAP = 14;
     const LINE_OFFSET = Math.round(sz * 0.35);
-    const blockTop = fY - GAP - lh;
-    const lineY = blockTop;
-    ctx.beginPath(); ctx.moveTo(rx, lineY); ctx.lineTo(R - PAD, lineY);
+    // zoneDTop đã được tính = fY2 - 14 - lh
+    ctx.beginPath(); ctx.moveTo(rx, zoneDTop); ctx.lineTo(R - PAD, zoneDTop);
     ctx.lineWidth = 3; ctx.stroke();
     ctx.font = '700 ' + sz + 'px ' + FONT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = '#000';
-    ctx.fillText(txt, rcx, lineY + LINE_OFFSET);
+    ctx.fillText(txt, rcx, zoneDTop + LINE_OFFSET);
   }
 }
 
